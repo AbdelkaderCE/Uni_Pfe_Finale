@@ -168,7 +168,7 @@ function AdminValidationQueue({ subjects, loading, error, onValidate, onReject }
    TEACHER SUBJECT CREATION & DASHBOARD
    ───────────────────────────────────────────────────────────── */
 
-function TeacherSubjectsView({ subjects, loading, error, onRefresh }) {
+function TeacherSubjectsView({ subjects, loading, error, onRefresh, teacherProfileId }) {
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     titre_ar: '',
@@ -186,14 +186,19 @@ function TeacherSubjectsView({ subjects, loading, error, onRefresh }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!teacherProfileId) {
+      alert('Teacher profile is missing. Please re-login and try again.');
+      return;
+    }
+
     setSubmitting(true);
     try {
       await request('/api/v1/pfe/sujets', {
         method: 'POST',
         body: JSON.stringify({
           ...formData,
-          promoId: 1, // TODO: Get from user context
-          anneeUniversitaire: '2025/2026',
+          enseignantId: Number(teacherProfileId),
         }),
       });
       setFormData({ titre_ar: '', titre_en: '', description_ar: '', description_en: '', typeProjet: 'application', maxGrps: 1 });
@@ -665,6 +670,7 @@ export default function PFEWorkspacePage() {
           loading={loading}
           error={error}
           onRefresh={loadSubjects}
+          teacherProfileId={user?.enseignant?.id}
         />
       );
     } else {

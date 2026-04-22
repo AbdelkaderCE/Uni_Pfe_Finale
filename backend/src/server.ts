@@ -5,6 +5,7 @@ import { connectDatabase } from "./config/database";
 import { ensureRbacCatalog } from "./shared/rbac.service";
 import { ensureRequestWorkflowHistoryTable } from "./modules/requests/workflow.service";
 import { ensureAuditLogTable } from "./shared/audit-log.service";
+import { ensurePfeRuntimeCompatibility } from "./modules/pfe/pfe-runtime-compat.service";
 
 const PORT = process.env.PORT || 5000;
 
@@ -19,6 +20,7 @@ async function startServer() {
       ensureRbacCatalog(),
       ensureRequestWorkflowHistoryTable(),
       ensureAuditLogTable(),
+      ensurePfeRuntimeCompatibility(),
     ]);
 
     const httpServer = createServer(app);

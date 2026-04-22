@@ -13,6 +13,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import request, { resolveMediaUrl } from '../services/api';
+import RequestConversation, { isTerminal } from '../components/requests/RequestConversation';
 
 /* ── Status Config ──────────────────────────────────────────── */
 
@@ -210,6 +211,12 @@ export default function AdminRequestsPage() {
         return;
       }
 
+      if (error?.status === 409 || error?.code === 'ALREADY_PROCESSED') {
+        alert(error?.message || 'This request has already been finalized. Decisions are locked.');
+        setActionModal(null);
+        return;
+      }
+
       alert(error?.message || 'Failed to process request decision.');
     } finally {
       setActionLoading(false);
@@ -394,36 +401,45 @@ export default function AdminRequestsPage() {
             </p>
           </div>
 
-          {/* Decision buttons */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => { setActionModal({ type: 'info', request: req }); setResponseText(''); }}
-              className="px-4 py-2 text-sm font-medium text-ink-secondary bg-surface-200 border border-edge rounded-md hover:bg-surface-300 transition-colors duration-150 flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+          {/* Decision buttons — hidden once the request is finalized (approved/rejected) */}
+          {isTerminal(req.status) ? (
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border text-xs font-semibold bg-surface-200 border-edge text-ink-tertiary">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
-              Request Info
-            </button>
-            <button
-              onClick={() => { setActionModal({ type: 'reject', request: req }); setResponseText(''); }}
-              className="px-4 py-2 text-sm font-medium text-danger bg-danger/5 border border-edge-strong rounded-md hover:bg-danger/10 transition-colors duration-150 flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-              Reject
-            </button>
-            <button
-              onClick={() => { setActionModal({ type: 'approve', request: req }); setResponseText(''); }}
-              className="px-4 py-2 text-sm font-medium text-surface bg-success rounded-md hover:opacity-90 transition-colors duration-150 flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-              </svg>
-              Approve
-            </button>
-          </div>
+              Decision locked
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setActionModal({ type: 'info', request: req }); setResponseText(''); }}
+                className="px-4 py-2 text-sm font-medium text-ink-secondary bg-surface-200 border border-edge rounded-md hover:bg-surface-300 transition-colors duration-150 flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+                </svg>
+                Request Info
+              </button>
+              <button
+                onClick={() => { setActionModal({ type: 'reject', request: req }); setResponseText(''); }}
+                className="px-4 py-2 text-sm font-medium text-danger bg-danger/5 border border-edge-strong rounded-md hover:bg-danger/10 transition-colors duration-150 flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Reject
+              </button>
+              <button
+                onClick={() => { setActionModal({ type: 'approve', request: req }); setResponseText(''); }}
+                className="px-4 py-2 text-sm font-medium text-surface bg-success rounded-md hover:opacity-90 transition-colors duration-150 flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
+                Approve
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Deadline warning */}
@@ -449,82 +465,89 @@ export default function AdminRequestsPage() {
           {/* Left */}
           <div className="lg:col-span-2 space-y-6">
 
-            {/* Student's request */}
-            <div className="bg-surface rounded-lg border border-edge shadow-card">
-              <div className="px-6 py-4 border-b border-edge-subtle flex items-center gap-2">
-                <svg className="w-5 h-5 text-ink-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                </svg>
-                <h2 className="text-base font-semibold text-ink">Student's Request</h2>
-              </div>
-              <div className="p-6">
-                <p className="text-sm text-ink-secondary leading-relaxed whitespace-pre-line">{req.description}</p>
+            {/* Conversation (chat/ticket view) */}
+            <RequestConversation
+              variant="admin"
+              request={{
+                status: req.status,
+                description: req.description,
+                studentName: req.studentName,
+                studentId: req.studentId,
+                dateSubmitted: req.dateSubmitted,
+                adminResponse: req.internalNotes || null,
+                adminName: 'Administration',
+                decisionDate: req.decisionDate || req.updatedAt || null,
+              }}
+            />
 
-                {/* Attachments inline */}
-                {attachments.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-edge-subtle">
-                    <p className="text-xs font-medium text-ink-muted uppercase tracking-wider mb-2">
-                      Attached Documents ({attachments.length})
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {attachments.map((file, index) => {
-                        const fileUrl = resolveAttachmentUrl(file);
-                        const canOpen = Boolean(fileUrl);
-                        const isImage = isImageAttachment(file);
+            {/* Attachments (kept separate from the chat panel) */}
+            {attachments.length > 0 && (
+              <div className="bg-surface rounded-lg border border-edge shadow-card">
+                <div className="px-6 py-4 border-b border-edge-subtle flex items-center gap-2">
+                  <svg className="w-5 h-5 text-ink-tertiary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                  </svg>
+                  <h2 className="text-base font-semibold text-ink">Attachments</h2>
+                </div>
+                <div className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {attachments.map((file, index) => {
+                      const fileUrl = resolveAttachmentUrl(file);
+                      const canOpen = Boolean(fileUrl);
+                      const isImage = isImageAttachment(file);
 
-                        return (
-                          <div key={`${file.id || file.name || 'file'}-${index}`} className="rounded-lg border border-edge-subtle bg-surface-200 p-3">
-                            {isImage && canOpen ? (
-                              <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="block mb-2 overflow-hidden rounded-md border border-edge-subtle bg-surface">
-                                <img
-                                  src={fileUrl}
-                                  alt={file.name || 'Attachment preview'}
-                                  className="h-28 w-full object-cover"
-                                />
-                              </a>
-                            ) : null}
+                      return (
+                        <div key={`${file.id || file.name || 'file'}-${index}`} className="rounded-lg border border-edge-subtle bg-surface-200 p-3">
+                          {isImage && canOpen ? (
+                            <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="block mb-2 overflow-hidden rounded-md border border-edge-subtle bg-surface">
+                              <img
+                                src={fileUrl}
+                                alt={file.name || 'Attachment preview'}
+                                className="h-28 w-full object-cover"
+                              />
+                            </a>
+                          ) : null}
 
-                            <div className="flex items-start gap-2">
-                              <div className="mt-0.5 text-ink-tertiary"><FileIcon type={file.type} /></div>
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium text-ink truncate">{file.name || 'Attachment'}</p>
-                                <p className="text-[11px] text-ink-muted">
-                                  {file.type || 'Document'}{file.size ? ` · ${file.size}` : ''}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="mt-2 flex items-center gap-2">
-                              {canOpen ? (
-                                <a
-                                  href={fileUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="px-2.5 py-1 text-[11px] font-medium text-brand bg-brand/5 rounded-md hover:bg-brand/10 transition-colors"
-                                >
-                                  Preview
-                                </a>
-                              ) : null}
-                              {canOpen ? (
-                                <a
-                                  href={fileUrl}
-                                  download={file.name || undefined}
-                                  className="px-2.5 py-1 text-[11px] font-medium text-ink-secondary bg-surface rounded-md hover:bg-surface-200 transition-colors"
-                                >
-                                  Download
-                                </a>
-                              ) : (
-                                <span className="text-[11px] text-ink-muted">File link unavailable</span>
-                              )}
+                          <div className="flex items-start gap-2">
+                            <div className="mt-0.5 text-ink-tertiary"><FileIcon type={file.type} /></div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-ink truncate">{file.name || 'Attachment'}</p>
+                              <p className="text-[11px] text-ink-muted">
+                                {file.type || 'Document'}{file.size ? ` · ${file.size}` : ''}
+                              </p>
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
+
+                          <div className="mt-2 flex items-center gap-2">
+                            {canOpen ? (
+                              <a
+                                href={fileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-2.5 py-1 text-[11px] font-medium text-brand bg-brand/5 rounded-md hover:bg-brand/10 transition-colors"
+                              >
+                                Preview
+                              </a>
+                            ) : null}
+                            {canOpen ? (
+                              <a
+                                href={fileUrl}
+                                download={file.name || undefined}
+                                className="px-2.5 py-1 text-[11px] font-medium text-ink-secondary bg-surface rounded-md hover:bg-surface-200 transition-colors"
+                              >
+                                Download
+                              </a>
+                            ) : (
+                              <span className="text-[11px] text-ink-muted">File link unavailable</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Internal Notes (staff only) */}
             <div className="bg-surface rounded-lg border border-edge shadow-card">

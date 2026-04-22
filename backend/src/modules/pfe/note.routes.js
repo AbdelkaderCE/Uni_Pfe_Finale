@@ -1,5 +1,5 @@
 const express = require('express');
-const { NoteController } = require('../controllers/note.controller');
+const { NoteController } = require('./note.controller');
 
 const router = express.Router();
 const noteController = new NoteController();

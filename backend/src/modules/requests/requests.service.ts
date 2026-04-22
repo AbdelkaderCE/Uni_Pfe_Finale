@@ -1,6 +1,11 @@
 import prisma from "../../config/database";
 import { Prisma, StatusReclamation } from "@prisma/client";
 import logger from "../../utils/logger";
+import {
+  EntityNotFoundError,
+  StatusLockError,
+  TERMINAL_STATUSES,
+} from "../../shared/status-lock";
 
 export interface CreateRequestInput {
   titre: string;
@@ -233,27 +238,53 @@ export const updateRequest = async (id: number, input: UpdateRequestInput) => {
   }
 };
 
+const decideReclamationLocked = async (
+  requestId: number,
+  data: Prisma.ReclamationUncheckedUpdateManyInput
+) => {
+  const result = await prisma.reclamation.updateMany({
+    where: {
+      id: requestId,
+      status: { notIn: [...TERMINAL_STATUSES.reclamation] },
+    },
+    data,
+  });
+
+  if (result.count === 0) {
+    const existing = await prisma.reclamation.findUnique({
+      where: { id: requestId },
+      select: { status: true },
+    });
+    if (!existing) {
+      throw new EntityNotFoundError("reclamation", requestId);
+    }
+    throw new StatusLockError("reclamation", existing.status);
+  }
+
+  return prisma.reclamation.findUnique({
+    where: { id: requestId },
+    include: {
+      etudiant: { include: { user: true } },
+      type: true,
+    },
+  });
+};
+
 export const approveRequest = async (input: ApproveRequestInput) => {
   try {
-    const request = await prisma.reclamation.update({
-      where: { id: input.requestId },
-      data: {
-        status: StatusReclamation.traitee,
-        traitePar: input.approvedBy,
-        reponse_ar: input.feedback,
-        dateTraitement: new Date(),
-      },
-      include: {
-        etudiant: {
-          include: { user: true },
-        },
-        type: true,
-      },
+    const request = await decideReclamationLocked(input.requestId, {
+      status: StatusReclamation.traitee,
+      traitePar: input.approvedBy,
+      reponse_ar: input.feedback,
+      dateTraitement: new Date(),
     });
 
     logger.info(`Request approved: ${input.requestId}`);
     return request;
   } catch (error) {
+    if (error instanceof StatusLockError || error instanceof EntityNotFoundError) {
+      throw error;
+    }
     logger.error("Error approving request:", error);
     throw error;
   }
@@ -261,25 +292,19 @@ export const approveRequest = async (input: ApproveRequestInput) => {
 
 export const rejectRequest = async (input: RejectRequestInput) => {
   try {
-    const request = await prisma.reclamation.update({
-      where: { id: input.requestId },
-      data: {
-        status: StatusReclamation.refusee,
-        traitePar: input.rejectedBy,
-        reponse_ar: input.reason,
-        dateTraitement: new Date(),
-      },
-      include: {
-        etudiant: {
-          include: { user: true },
-        },
-        type: true,
-      },
+    const request = await decideReclamationLocked(input.requestId, {
+      status: StatusReclamation.refusee,
+      traitePar: input.rejectedBy,
+      reponse_ar: input.reason,
+      dateTraitement: new Date(),
     });
 
     logger.info(`Request rejected: ${input.requestId}`);
     return request;
   } catch (error) {
+    if (error instanceof StatusLockError || error instanceof EntityNotFoundError) {
+      throw error;
+    }
     logger.error("Error rejecting request:", error);
     throw error;
   }

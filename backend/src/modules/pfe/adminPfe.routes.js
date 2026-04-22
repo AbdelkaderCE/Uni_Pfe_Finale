@@ -1,5 +1,5 @@
 const express = require('express');
-const { AdminPfeController } = require('../controllers/adminPfe.controller');
+const { AdminPfeController } = require('./adminPfe.controller');
 
 const router = express.Router();
 const adminController = new AdminPfeController();
