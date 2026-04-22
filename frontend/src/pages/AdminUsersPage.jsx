@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Search, User, GraduationCap, UserCog, ShieldCheck } from 'lucide-react';
 import { authAPI, resolveMediaUrl } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../design-system/components';
@@ -43,16 +44,69 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-function formatFrDate(value) {
-  return new Date(value).toLocaleDateString('fr-FR', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-}
-
 const inputClassName = 'w-full rounded-md border border-control-border bg-control-bg px-3 py-2.5 text-sm text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/30';
 const sectionClassName = 'rounded-lg border border-edge bg-surface shadow-card';
+
+let html2pdfLoader = null;
+
+const getHtml2Pdf = async () => {
+  if (!html2pdfLoader) {
+    html2pdfLoader = import('html2pdf.js/dist/html2pdf.bundle.min.js').then((module) => module.default || module);
+  }
+
+  return html2pdfLoader;
+};
+
+const waitForNodeImages = async (container) => {
+  const images = Array.from(container.querySelectorAll('img'));
+  if (!images.length) return;
+
+  await Promise.all(images.map((img) => {
+    if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+
+    return new Promise((resolve) => {
+      const done = () => resolve();
+      img.addEventListener('load', done, { once: true });
+      img.addEventListener('error', done, { once: true });
+    });
+  }));
+};
+
+const exportHtmlAsPdf = async ({ html, fileName }) => {
+  const html2pdf = await getHtml2Pdf();
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '0';
+  container.style.top = '0';
+  container.style.width = '210mm';
+  container.style.maxHeight = '100vh';
+  container.style.overflow = 'auto';
+  container.style.opacity = '0';
+  container.style.pointerEvents = 'none';
+  container.style.zIndex = '-1';
+  container.style.background = '#ffffff';
+  container.innerHTML = html;
+  document.body.appendChild(container);
+
+  try {
+    await new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    await waitForNodeImages(container);
+
+    await html2pdf()
+      .from(container)
+      .set({
+        filename: fileName,
+        margin: [10, 10, 10, 10],
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['css', 'legacy'] },
+      })
+      .save();
+  } finally {
+    document.body.removeChild(container);
+  }
+};
 
 export default function AdminUsersPage() {
   const { user, loading: authLoading } = useAuth();
@@ -84,6 +138,11 @@ export default function AdminUsersPage() {
     roleNames: [],
   });
   const [creatingUser, setCreatingUser] = useState(false);
+
+  /* Master/detail picker state — mirrors AdminHistoryPage */
+  const [usersTab, setUsersTab] = useState('all');
+  const [usersSearch, setUsersSearch] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState(null);
 
   const canAccess = useMemo(() => isAdminRole(user?.roles), [user?.roles]);
   const credentialRows = useMemo(() => {
@@ -209,11 +268,8 @@ export default function AdminUsersPage() {
     loadData();
   }, [canAccess]);
 
-  const toggleCreateRole = (roleName) => {
-    setCreateForm((prev) => {
-      const selected = prev.roleNames.includes(roleName) ? [] : [roleName];
-      return { ...prev, roleNames: selected };
-    });
+  const selectCreateRole = (roleName) => {
+    setCreateForm((prev) => ({ ...prev, roleNames: [roleName] }));
   };
 
   const toggleUserRole = (userId, roleName) => {
@@ -269,8 +325,8 @@ export default function AdminUsersPage() {
     setError('');
     setMessage('');
 
-    if (!createForm.roleNames.length) {
-      setError('Please select at least one role for the new user.');
+    if (createForm.roleNames.length !== 1) {
+      setError('Please select exactly one role for the new user.');
       return;
     }
 
@@ -428,18 +484,13 @@ export default function AdminUsersPage() {
   const buildOfficialRowsTable = (title, rows) => {
     const renderedRows = rows
       .map((row, index) => {
-        const fullName = `${row.prenom || ''} ${row.nom || ''}`.trim();
-        const roleText = (row.roles || []).map(roleLabel).join(', ');
-
         return `
           <tr>
             <td style="border: 1px solid #000000; padding: 8px; text-align: center;">${index + 1}</td>
-            <td style="border: 1px solid #000000; padding: 8px;">${escapeHtml(fullName)}</td>
+            <td style="border: 1px solid #000000; padding: 8px;">${escapeHtml(row.nom || '')}</td>
+            <td style="border: 1px solid #000000; padding: 8px;">${escapeHtml(row.prenom || '')}</td>
             <td style="border: 1px solid #000000; padding: 8px;">${escapeHtml(row.email)}</td>
             <td style="border: 1px solid #000000; padding: 8px;">${escapeHtml(row.telephone || '-')}</td>
-            <td style="border: 1px solid #000000; padding: 8px;">${escapeHtml(roleText || '-')}</td>
-            <td style="border: 1px solid #000000; padding: 8px;">${escapeHtml(row.tempPassword || 'N/A')}</td>
-            <td style="border: 1px solid #000000; padding: 8px; text-align: center;">${escapeHtml(formatFrDate(row.generatedAt || new Date().toISOString()))}</td>
           </tr>
         `;
       })
@@ -451,18 +502,64 @@ export default function AdminUsersPage() {
         <thead>
           <tr style="background-color: #e8e8e8;">
             <th style="border: 1px solid #000000; padding: 8px; text-align: center;">N°</th>
-            <th style="border: 1px solid #000000; padding: 8px;">Nom et Prénom</th>
+            <th style="border: 1px solid #000000; padding: 8px;">Nom</th>
+            <th style="border: 1px solid #000000; padding: 8px;">Prénom</th>
             <th style="border: 1px solid #000000; padding: 8px;">Email</th>
             <th style="border: 1px solid #000000; padding: 8px;">Téléphone</th>
-            <th style="border: 1px solid #000000; padding: 8px;">Rôle</th>
-            <th style="border: 1px solid #000000; padding: 8px;">Mot de passe</th>
-            <th style="border: 1px solid #000000; padding: 8px;">Date</th>
           </tr>
         </thead>
         <tbody>
-          ${renderedRows || '<tr><td colspan="7" style="text-align: center;">Aucune donnée</td></tr>'}
+          ${renderedRows || '<tr><td colspan="5" style="text-align: center;">Aucune donnée</td></tr>'}
         </tbody>
       </table>
+    `;
+  };
+
+  const buildOfficialDocumentHtml = ({ title, rows, dateLabel }) => {
+    const logoHtml = logoBase64
+      ? `<div style="text-align: center; margin: 20px 0;"><img src="${logoBase64}" style="max-width: 120px; max-height: 120px; width: auto; height: auto;" /></div>`
+      : '';
+
+    return `
+      <style>
+        .export-root * { margin: 0; padding: 0; box-sizing: border-box; }
+        .export-root { font-family: 'Arial', 'Calibri', sans-serif; padding: 20px; color: #000000; background: #ffffff; }
+        .export-root .document-container { max-width: 1200px; margin: 0 auto; }
+        .export-root .header { text-align: center; margin-bottom: 30px; padding: 20px; }
+        .export-root .arabic-text { font-family: 'Traditional Arabic', 'Arial', sans-serif; font-size: 16px; margin: 10px 0; }
+        .export-root .title { font-size: 20px; font-weight: bold; margin: 20px 0 10px 0; text-align: center; }
+        .export-root .rule { border-top: 2px solid #000000; margin: 15px 0; }
+        .export-root .date-info { text-align: right; margin: 20px 0; font-size: 12px; }
+        .export-root table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 11px; }
+        .export-root th { border: 1px solid #000000; padding: 10px 8px; background-color: #e8e8e8; font-weight: bold; text-align: center; font-size: 12px; }
+        .export-root td { border: 1px solid #000000; padding: 8px; vertical-align: top; }
+      </style>
+      <div class="export-root">
+        <div class="document-container">
+          <div class="header">
+            <div class="arabic-text">
+              <strong>الجمهورية الجزائرية الديمقراطية الشعبية</strong><br/>
+              <strong>وزارة التعليم العالي و البحث العلمي</strong>
+            </div>
+
+            ${logoHtml}
+
+            <div style="margin: 20px 0;">
+              <strong>${escapeHtml(formMeta.universityName)}</strong><br/>
+              Faculté : ${escapeHtml(formMeta.facultyName)}<br/>
+              Département : ${escapeHtml(formMeta.departmentName)}
+            </div>
+
+            <div class="rule"></div>
+            <div class="title">${escapeHtml(title)}</div>
+            <div class="rule"></div>
+
+            <div class="date-info">Date : ${escapeHtml(dateLabel)}</div>
+          </div>
+
+          ${buildOfficialRowsTable(title, rows)}
+        </div>
+      </div>
     `;
   };
 
@@ -471,32 +568,30 @@ export default function AdminUsersPage() {
     setMessage('');
 
     try {
-      // Fetch real created users from API
       const usersResponse = await authAPI.adminGetUsers();
-      const allUsers = usersResponse?.data || [];
-      
-      // Filter to get students and teachers
+      const allUsers = Array.isArray(usersResponse?.data) ? usersResponse.data : [];
+
       const studentUsers = allUsers.filter((u) => (u.roles || []).includes('etudiant'));
       const teacherUsers = allUsers.filter((u) => (u.roles || []).includes('enseignant'));
-      
-      // Prepare data with credentials from registry if available
-      const studentData = studentUsers.map(user => {
-        const registryEntry = credentialRegistry.find(entry => entry.userId === user.id);
-        return {
-          ...user,
-          tempPassword: registryEntry?.tempPassword || '••••••••',
-          generatedAt: registryEntry?.generatedAt || user.createdAt || new Date().toISOString()
-        };
-      });
-      
-      const teacherData = teacherUsers.map(user => {
-        const registryEntry = credentialRegistry.find(entry => entry.userId === user.id);
-        return {
-          ...user,
-          tempPassword: registryEntry?.tempPassword || '••••••••',
-          generatedAt: registryEntry?.generatedAt || user.createdAt || new Date().toISOString()
-        };
-      });
+
+      const studentData = studentUsers.map((user) => ({
+        nom: user.nom || '',
+        prenom: user.prenom || '',
+        email: user.email || '',
+        telephone: user.telephone || '',
+      }));
+
+      const teacherData = teacherUsers.map((user) => ({
+        nom: user.nom || '',
+        prenom: user.prenom || '',
+        email: user.email || '',
+        telephone: user.telephone || '',
+      }));
+
+      if (!studentData.length && !teacherData.length) {
+        setError('No student or teacher users found to export.');
+        return;
+      }
 
       const today = new Date();
       const dateLabel = today.toLocaleDateString('fr-FR', {
@@ -505,253 +600,73 @@ export default function AdminUsersPage() {
         year: 'numeric',
       });
 
-      const logoHtml = logoBase64 
-        ? `<div style="text-align: center; margin: 20px 0;">
-            <img src="${logoBase64}" style="max-width: 120px; max-height: 120px; width: auto; height: auto;" />
-           </div>`
-        : '';
+      const dateStamp = today.toISOString().slice(0, 10);
 
-      const html = `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8" />
-            <title>Fiche de Création des Utilisateurs</title>
-            <style>
-              @media print {
-                body {
-                  margin: 0;
-                  padding: 0.5cm;
-                }
-                .page-break {
-                  page-break-before: always;
-                }
-                table {
-                  page-break-inside: avoid;
-                }
-                tr {
-                  page-break-inside: avoid;
-                }
-              }
-              
-              * {
-                margin: 0;
-                padding: 0;
-                box-sizing: border-box;
-              }
-              
-              body {
-                font-family: 'Arial', 'Calibri', sans-serif;
-                margin: 0;
-                padding: 20px;
-                color: #000000;
-                background: white;
-              }
-              
-              .document-container {
-                max-width: 1200px;
-                margin: 0 auto;
-                background: white;
-              }
-              
-              .header {
-                text-align: center;
-                margin-bottom: 30px;
-                padding: 20px;
-              }
-              
-              .logo-container {
-                text-align: center;
-                margin: 20px 0;
-              }
-              
-              .logo-img {
-                max-width: 120px;
-                max-height: 120px;
-                width: auto;
-                height: auto;
-                display: inline-block;
-              }
-              
-              .arabic-text {
-                font-family: 'Traditional Arabic', 'Arial', sans-serif;
-                font-size: 16px;
-                margin: 10px 0;
-              }
-              
-              .title {
-                font-size: 20px;
-                font-weight: bold;
-                margin: 20px 0 10px 0;
-                text-align: center;
-              }
-              
-              .rule {
-                border-top: 2px solid #000000;
-                margin: 15px 0;
-              }
-              
-              .subtitle {
-                font-size: 16px;
-                font-weight: bold;
-                margin: 10px 0;
-              }
-              
-              .date-info {
-                text-align: right;
-                margin: 20px 0;
-                font-size: 12px;
-              }
-              
-              table {
-                width: 100%;
-                border-collapse: collapse;
-                margin: 20px 0;
-                font-size: 11px;
-              }
-              
-              th {
-                border: 1px solid #000000;
-                padding: 10px 8px;
-                background-color: #e8e8e8;
-                font-weight: bold;
-                text-align: center;
-                font-size: 12px;
-              }
-              
-              td {
-                border: 1px solid #000000;
-                padding: 8px;
-                vertical-align: top;
-              }
-              
-              .footer {
-                margin-top: 50px;
-                padding-top: 30px;
-              }
-              
-              .signatures-table {
-                width: 100%;
-                margin-top: 30px;
-                border: none;
-              }
-              
-              .signatures-table td {
-                border: none;
-                padding-top: 40px;
-                text-align: center;
-                vertical-align: bottom;
-              }
-              
-              .signature-line {
-                border-top: 1px solid #000000;
-                width: 200px;
-                margin-top: 10px;
-                padding-top: 5px;
-              }
-              
-              .stamp {
-                text-align: center;
-                margin-top: 30px;
-                font-style: italic;
-              }
-              
-              @media print {
-                body {
-                  margin: 0;
-                  padding: 0.5cm;
-                }
-                .no-print {
-                  display: none;
-                }
-              }
-            </style>
-          </head>
-          <body>
-            <div class="document-container">
-              <div class="header">
-                <div class="arabic-text">
-                  <strong>الجمهورية الجزائرية الديمقراطية الشعبية</strong><br/>
-                  <strong>وزارة التعليم العالي و البحث العلمي</strong>
-                </div>
-                
-                ${logoHtml}
-                
-                <div style="margin: 20px 0;">
-                  <strong>${escapeHtml(formMeta.universityName)}</strong><br/>
-                  Faculté : ${escapeHtml(formMeta.facultyName)}<br/>
-                  Département : ${escapeHtml(formMeta.departmentName)}
-                </div>
-                
-                <div class="rule"></div>
-                
-                <div class="title">
-                  FICHE DE CRÉATION DES UTILISATEURS
-                </div>
-                
-                <div class="rule"></div>
-                
-                <div class="date-info">
-                  Date : ${escapeHtml(dateLabel)}
-                </div>
-              </div>
-              
-              ${studentData.length > 0 ? buildOfficialRowsTable('Liste des Étudiants', studentData) : '<p>Aucun étudiant trouvé</p>'}
-              ${teacherData.length > 0 ? buildOfficialRowsTable('Liste des Enseignants', teacherData) : '<p>Aucun enseignant trouvé</p>'}
-              
-              <div class="footer">
-                <table class="signatures-table">
-                  <tr>
-                    <td style="width: 50%; text-align: center;">
-                      Signature de l'Utilisateur<br/>
-                      <div class="signature-line"></div>
-                    </td>
-                    <td style="width: 50%; text-align: center;">
-                      Signature de l'Administration<br/>
-                      <div class="signature-line"></div>
-                    </td>
-                  </tr>
-                </table>
-                
-                <div class="stamp">
-                  Cachet officiel de l'établissement
-                </div>
-              </div>
-            </div>
-          </body>
-        </html>
-      `;
+      if (studentData.length) {
+        const studentHtml = buildOfficialDocumentHtml({
+          title: 'FICHE DE CRÉATION - ÉTUDIANTS',
+          rows: studentData,
+          dateLabel,
+        });
 
-      const blob = new Blob([html], {
-        type: 'application/vnd.ms-excel;charset=utf-8;',
-      });
+        await exportHtmlAsPdf({
+          html: studentHtml,
+          fileName: `liste_etudiants_${dateStamp}.pdf`,
+        });
+      }
 
-      const fileName = `fiche_utilisateurs_${today.toISOString().slice(0, 10)}.xls`;
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      if (teacherData.length) {
+        const teacherHtml = buildOfficialDocumentHtml({
+          title: 'FICHE DE CRÉATION - ENSEIGNANTS',
+          rows: teacherData,
+          dateLabel,
+        });
 
-      // Offer print dialog for PDF
-      setTimeout(() => {
-        if (window.confirm('Do you want to open print dialog to save as PDF?')) {
-          const printWindow = window.open('', '_blank');
-          printWindow.document.write(html);
-          printWindow.document.close();
-          printWindow.print();
-        }
-      }, 500);
+        await exportHtmlAsPdf({
+          html: teacherHtml,
+          fileName: `liste_enseignants_${dateStamp}.pdf`,
+        });
+      }
 
-      setMessage('Excel exported successfully with logo and official format.');
+      setMessage('Two separate PDF exports were generated for students and teachers (when data exists).');
     } catch (err) {
       console.error('Export error:', err);
       setError(`Export failed: ${err.message}`);
     }
   };
+
+  /* ── Master/detail derived data (matches AdminHistoryPage pattern) ── */
+  const USER_TABS = {
+    all:     { label: 'All',      icon: Users => null }, // icon set inline in render
+    student: { label: 'Students', match: (u) => (u.roles || []).includes('etudiant') },
+    teacher: { label: 'Teachers', match: (u) => (u.roles || []).includes('enseignant') },
+    admin:   { label: 'Admins',   match: (u) => (u.roles || []).includes('admin') },
+  };
+
+  const filteredPickerUsers = useMemo(() => {
+    const q = usersSearch.trim().toLowerCase();
+    return users
+      .filter((u) => {
+        if (usersTab === 'all') return true;
+        if (usersTab === 'student') return (u.roles || []).includes('etudiant');
+        if (usersTab === 'teacher') return (u.roles || []).includes('enseignant');
+        if (usersTab === 'admin') return (u.roles || []).includes('admin');
+        return true;
+      })
+      .filter((u) => {
+        if (!q) return true;
+        return (
+          String(u.prenom || '').toLowerCase().includes(q) ||
+          String(u.nom || '').toLowerCase().includes(q) ||
+          String(u.email || '').toLowerCase().includes(q)
+        );
+      });
+  }, [users, usersTab, usersSearch]);
+
+  const selectedUser = useMemo(
+    () => users.find((u) => u.id === selectedUserId) || null,
+    [users, selectedUserId]
+  );
 
   if (authLoading || loading) {
     return (
@@ -808,9 +723,9 @@ export default function AdminUsersPage() {
 
       <section className={`${sectionClassName} p-6`}>
         <div className="flex flex-col gap-2 border-b border-edge-subtle pb-5">
-          <h2 className="text-xl font-semibold tracking-tight text-ink">Official Excel Formulaire</h2>
+          <h2 className="text-xl font-semibold tracking-tight text-ink">Official PDF Lists</h2>
           <p className="text-sm text-ink-secondary">
-            Generate two official lists (students and teachers) with temporary passwords, department, logo, and date.
+            Generate two separate PDF files: one for students and one for teachers. Export includes only Nom, Prénom, Email, and Téléphone.
           </p>
         </div>
 
@@ -851,7 +766,7 @@ export default function AdminUsersPage() {
             variant="primary"
             size="md"
           >
-            Exporter le formulaire Excel officiel
+            Exporter 2 fichiers PDF séparés
           </Button>
         </div>
       </section>
@@ -965,17 +880,19 @@ export default function AdminUsersPage() {
 
             <div>
               <div className="mb-3 flex items-center justify-between gap-3">
-                <label className="block text-sm font-medium text-ink">Roles</label>
-                <span className="text-xs text-ink-tertiary">{createForm.roleNames.length} selected</span>
+                <label className="block text-sm font-medium text-ink">Role <span className="text-xs font-normal text-ink-tertiary">(select one)</span></label>
+                <span className="text-xs text-ink-tertiary">
+                  {createForm.roleNames[0] ? roleLabel(createForm.roleNames[0]) : 'None selected'}
+                </span>
               </div>
               {!roles.length ? (
                 <div className="rounded-md border border-edge-strong bg-danger/10 px-4 py-3 text-sm text-danger">
                   No roles found. Make sure your backend has roles data and your account has admin access.
                 </div>
               ) : null}
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" role="radiogroup" aria-label="User role">
                 {baseCreationRoles.map((role) => {
-                  const selected = createForm.roleNames.includes(role.nom);
+                  const selected = createForm.roleNames[0] === role.nom;
                   return (
                     <label
                       key={role.id}
@@ -986,10 +903,11 @@ export default function AdminUsersPage() {
                       }`}
                     >
                       <input
-                        type="checkbox"
+                        type="radio"
+                        name="create-user-role"
                         className="mt-0.5 accent-brand"
                         checked={selected}
-                        onChange={() => toggleCreateRole(role.nom)}
+                        onChange={() => selectCreateRole(role.nom)}
                       />
                       <span className="min-w-0">
                         <span className="block text-sm font-medium text-ink">{roleLabel(role.nom)}</span>
@@ -1146,24 +1064,126 @@ export default function AdminUsersPage() {
         </div>
       ) : null}
 
-      <section className={`${sectionClassName} p-6`}>
-        <div className="flex flex-col gap-2 border-b border-edge-subtle pb-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="text-xl font-semibold tracking-tight text-ink">Existing Users</h2>
-            <p className="mt-1 text-sm text-ink-secondary">Review account status and adjust role assignments without leaving the page.</p>
-          </div>
-          <div className="rounded-full bg-canvas px-3 py-1 text-xs font-medium text-ink-secondary">
-            {users.length} managed accounts
-          </div>
-        </div>
+      <section>
+        <header className="mb-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-ink-tertiary">
+            Administration
+          </p>
+          <h2 className="mt-1 text-2xl font-bold text-ink">Existing Users</h2>
+          <p className="mt-1 text-sm text-ink-secondary">
+            Browse, review status, and adjust role assignments for any account on the platform.
+          </p>
+        </header>
 
-        {users.length ? (
-          <div className="mt-6 grid gap-4 xl:grid-cols-2">
-            {users.map((u) => {
-              const avatarUrl = resolveMediaUrl(u.photo);
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
+          {/* Left column — picker (mirrors AdminHistoryPage) */}
+          <aside className="rounded-2xl border border-edge bg-surface p-3 shadow-sm">
+            <div className="flex gap-1 rounded-lg bg-surface-200 p-1">
+              {[
+                { key: 'all',     label: 'All',      Icon: User },
+                { key: 'student', label: 'Students', Icon: GraduationCap },
+                { key: 'teacher', label: 'Teachers', Icon: UserCog },
+                { key: 'admin',   label: 'Admins',   Icon: ShieldCheck },
+              ].map(({ key, label, Icon }) => {
+                const active = usersTab === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => { setUsersTab(key); setSelectedUserId(null); }}
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                      active ? 'bg-surface text-ink shadow-sm' : 'text-ink-secondary hover:text-ink'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5" strokeWidth={2} />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
 
-              return (
-                <div key={u.id} className="rounded-2xl border border-edge bg-canvas p-5 shadow-sm transition hover:border-edge-strong">
+            <div className="relative mt-3">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-tertiary"
+                strokeWidth={2}
+              />
+              <input
+                type="text"
+                value={usersSearch}
+                onChange={(e) => setUsersSearch(e.target.value)}
+                placeholder="Search by name or email…"
+                className="w-full rounded-lg border border-edge bg-surface py-2 pl-9 pr-3 text-sm text-ink placeholder:text-ink-tertiary focus:border-brand/40 focus:outline-none focus:ring-2 focus:ring-brand/20"
+              />
+            </div>
+
+            <div className="mt-3 max-h-[65vh] overflow-y-auto pr-1">
+              {filteredPickerUsers.length === 0 ? (
+                <p className="px-3 py-6 text-center text-xs text-ink-tertiary">
+                  No users match the current filters.
+                </p>
+              ) : (
+                <ul className="space-y-1">
+                  {filteredPickerUsers.map((u) => {
+                    const active = selectedUserId === u.id;
+                    const avatarUrl = resolveMediaUrl(u.photo);
+                    return (
+                      <li key={u.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedUserId(u.id)}
+                          className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors ${
+                            active ? 'bg-brand/10 text-ink ring-1 ring-brand/30' : 'hover:bg-surface-200'
+                          }`}
+                        >
+                          {avatarUrl ? (
+                            <img
+                              src={avatarUrl}
+                              alt={`${u.prenom || ''} ${u.nom || ''}`.trim() || 'User'}
+                              className="h-8 w-8 shrink-0 rounded-full object-cover border border-edge"
+                              onError={(event) => {
+                                event.currentTarget.onerror = null;
+                                event.currentTarget.src = '/Logo.png';
+                              }}
+                            />
+                          ) : (
+                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-surface-200 text-xs font-semibold text-ink-secondary">
+                              {getInitials(u.prenom, u.nom)}
+                            </span>
+                          )}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-medium text-ink">
+                              {(u.prenom || '') + ' ' + (u.nom || '')}
+                            </span>
+                            <span className="block truncate text-xs text-ink-tertiary">
+                              {u.email}
+                            </span>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </aside>
+
+          {/* Right column — user detail / editor */}
+          <section className="min-w-0 rounded-2xl border border-edge bg-surface shadow-sm">
+            {!selectedUser ? (
+              <div className="flex h-full min-h-[50vh] items-center justify-center p-10 text-center">
+                <div>
+                  <p className="text-sm font-medium text-ink">Select a user</p>
+                  <p className="mt-1 text-xs text-ink-tertiary">
+                    Pick a user from the list to review and manage their account.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              (() => {
+                const u = selectedUser;
+                const avatarUrl = resolveMediaUrl(u.photo);
+                return (
+                <div className="rounded-2xl border border-edge bg-canvas p-5 shadow-sm transition hover:border-edge-strong">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex min-w-0 items-start gap-4">
                     {avatarUrl ? (
@@ -1305,15 +1325,11 @@ export default function AdminUsersPage() {
                   </div>
                 </div>
                 </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="mt-6 rounded-2xl border border-dashed border-edge bg-canvas px-6 py-10 text-center">
-            <p className="text-base font-medium text-ink">No users found.</p>
-            <p className="mt-2 text-sm text-ink-secondary">Create the first account from the form above to start managing access.</p>
-          </div>
-        )}
+                );
+              })()
+            )}
+          </section>
+        </div>
       </section>
     </div>
   );

@@ -1,5 +1,4 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import heroBg from '../../assets/images/hero-bg.jpg';
 import { resolveMediaUrl } from '../../services/api';
@@ -91,8 +90,9 @@ export default function HeroSection() {
 
         {/* CTA Buttons */}
         <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
-          <Link
-            to="/login"
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event('home:openLogin'))}
             className="group relative rounded-md border border-edge bg-surface px-6 py-2.5 text-sm font-medium text-ink transition-all duration-150 hover:shadow-card hover:bg-surface-200 focus:ring-2 focus:ring-brand/30 focus:ring-offset-2 focus:ring-offset-canvas overflow-hidden"
           >
             <span className="relative z-10 flex items-center">
@@ -100,7 +100,7 @@ export default function HeroSection() {
               <ArrowRightIcon className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </span>
             <div className="absolute inset-0 bg-gradient-to-r from-yellow-300 to-orange-300 opacity-0 group-hover:opacity-100 transition-opacity" />
-          </Link>
+          </button>
 
           <button
             className="group flex items-center rounded-md border border-edge-strong bg-surface/10 px-6 py-2.5 text-sm font-medium text-surface backdrop-blur-sm transition-all duration-150 hover:bg-surface hover:text-ink focus:ring-2 focus:ring-brand/30 focus:ring-offset-2 focus:ring-offset-canvas"

@@ -536,7 +536,17 @@ export const createUserByAdminHandler = async (req: AuthRequest, res: Response) 
         success: false,
         error: {
           code: "MISSING_FIELDS",
-          message: "Email, nom, prenom, and at least one role are required",
+          message: "Email, nom, prenom, and a role are required",
+        },
+      });
+    }
+
+    if (normalizedRoleNames.length > 1) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_ROLE_SELECTION",
+          message: "Exactly one role must be assigned at creation time.",
         },
       });
     }

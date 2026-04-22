@@ -8,13 +8,12 @@ const UserRegistrationForm = ({ onSuccess }) => {
     prenom: '',
     telephone: '',
     sexe: '',
-    roles: [],
+    role: '',
   });
 
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
-  const [roleWarning, setRoleWarning] = useState('');
 
   const availableRoles = [
     { id: 'enseignant', label: 'Enseignant (Teacher)', category: 'teacher' },
@@ -22,28 +21,11 @@ const UserRegistrationForm = ({ onSuccess }) => {
     { id: 'admin', label: 'Administrateur', category: 'teacher' },
   ];
 
-  const TEACHER_ROLES = ['enseignant', 'admin'];
-  const STUDENT_ROLES = ['etudiant'];
-
-  const validateRoles = (selectedRoles) => {
-    const hasTeacher = selectedRoles.some(r => TEACHER_ROLES.includes(r));
-    const hasStudent = selectedRoles.some(r => STUDENT_ROLES.includes(r));
-
-    if (hasTeacher && hasStudent) {
-      setRoleWarning('Cannot mix teacher and student roles');
-      return false;
-    }
-    setRoleWarning('');
-    return true;
-  };
-
   const handleRoleChange = (roleId) => {
-    const newRoles = formData.roles.includes(roleId)
-      ? formData.roles.filter(r => r !== roleId)
-      : [...formData.roles, roleId];
-
-    validateRoles(newRoles);
-    setFormData({ ...formData, roles: newRoles });
+    setFormData({ ...formData, role: roleId });
+    if (errors.role) {
+      setErrors({ ...errors, role: '' });
+    }
   };
 
   const handleInputChange = (e) => {
@@ -71,10 +53,8 @@ const UserRegistrationForm = ({ onSuccess }) => {
       newErrors.prenom = 'First name is required';
     }
 
-    if (formData.roles.length === 0) {
-      newErrors.roles = 'At least one role is required';
-    } else if (!validateRoles(formData.roles)) {
-      newErrors.roles = 'Invalid role combination';
+    if (!formData.role) {
+      newErrors.role = 'A role is required';
     }
 
     setErrors(newErrors);
@@ -104,7 +84,7 @@ const UserRegistrationForm = ({ onSuccess }) => {
           prenom: formData.prenom,
           telephone: formData.telephone || undefined,
           sexe: formData.sexe || undefined,
-          roleNames: formData.roles,
+          roleName: formData.role,
         }),
       });
 
@@ -129,7 +109,7 @@ const UserRegistrationForm = ({ onSuccess }) => {
         prenom: '',
         telephone: '',
         sexe: '',
-        roles: [],
+        role: '',
       });
 
       if (onSuccess) {
@@ -266,51 +246,53 @@ const UserRegistrationForm = ({ onSuccess }) => {
           </div>
         </div>
 
-        {/* Roles Section */}
+        {/* Role Section (single selection) */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-3">
-            User Roles *
+            User Role * <span className="text-xs font-normal text-ink-tertiary">(select one)</span>
           </label>
 
-          {roleWarning && (
-            <div className="mb-4 p-3 bg-warning/10 border border-warning/30 rounded-lg flex items-start gap-2">
-              <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-              <p className="text-yellow-800 text-sm">{roleWarning}</p>
-            </div>
-          )}
-
-          {errors.roles && (
+          {errors.role && (
             <p className="text-red-600 text-sm mb-3 flex items-center gap-1">
-              <AlertCircle className="w-4 h-4" /> {errors.roles}
+              <AlertCircle className="w-4 h-4" /> {errors.role}
             </p>
           )}
 
-          <div className="space-y-2">
-            {availableRoles.map((role) => (
-              <label
-                key={role.id}
-                className="flex items-center p-3 border border-edge rounded-lg hover:bg-surface-200 cursor-pointer transition"
-              >
-                <input
-                  type="checkbox"
-                  checked={formData.roles.includes(role.id)}
-                  onChange={() => handleRoleChange(role.id)}
-                  className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                />
-                <span className="ml-3 text-sm font-medium text-gray-700">
-                  {role.label}
-                </span>
-                <span
-                  className={`ml-auto text-xs px-2 py-1 rounded-full ${
-                    role.category === 'teacher'
-                      ? 'bg-blue-100 text-blue-800'
-                      : 'bg-green-100 text-green-800'
+          <div className="space-y-2" role="radiogroup" aria-label="User role">
+            {availableRoles.map((role) => {
+              const selected = formData.role === role.id;
+              return (
+                <label
+                  key={role.id}
+                  className={`flex items-center p-3 border rounded-lg cursor-pointer transition ${
+                    selected
+                      ? 'border-brand bg-brand-light/70'
+                      : 'border-edge hover:bg-surface-200'
                   }`}
                 >
-                  {role.category === 'teacher' ? 'Teacher' : 'Student'}
-                </span>
-              </label>
-            ))}
+                  <input
+                    type="radio"
+                    name="user-role"
+                    value={role.id}
+                    checked={selected}
+                    onChange={() => handleRoleChange(role.id)}
+                    className="w-4 h-4 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="ml-3 text-sm font-medium text-gray-700">
+                    {role.label}
+                  </span>
+                  <span
+                    className={`ml-auto text-xs px-2 py-1 rounded-full ${
+                      role.category === 'teacher'
+                        ? 'bg-blue-100 text-blue-800'
+                        : 'bg-green-100 text-green-800'
+                    }`}
+                  >
+                    {role.category === 'teacher' ? 'Teacher' : 'Student'}
+                  </span>
+                </label>
+              );
+            })}
           </div>
         </div>
 
@@ -345,8 +327,7 @@ const UserRegistrationForm = ({ onSuccess }) => {
       {/* Helper Information */}
       <div className="mt-8 p-4 bg-brand-light border border-edge-strong rounded-lg">
         <p className="text-sm text-brand">
-          <strong>Note:</strong> Teachers and Students cannot have overlapping roles to maintain system integrity.
-          A user is either a teacher (Enseignant, Admin) or a student (Étudiant).
+          <strong>Note:</strong> Each user has exactly one role. A user is either a teacher (Enseignant), an administrator, or a student (Étudiant).
         </p>
       </div>
     </div>

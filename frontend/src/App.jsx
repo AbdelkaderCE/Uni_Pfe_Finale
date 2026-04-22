@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ThemeProvider } from './theme/ThemeProvider';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -15,9 +15,7 @@ import RequestsPage from './pages/RequestsPage';
 import PublicLayout from './components/public/PublicLayout';
 
 /* ── Auth pages ── */
-import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
-import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ChangePasswordPage from './pages/ChangePasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 
@@ -36,6 +34,7 @@ import AdminAcademicAssignmentsPage from './pages/AdminAcademicAssignmentsPage';
 import AdminSiteSettingsPage from './pages/AdminSiteSettingsPage';
 import AIAssistantPage from './pages/AIAssistantPage';
 import DocumentsPage from './pages/DocumentsPage';
+import RemiseCopie from './pages/RemiseCopie';
 import StudentNotesPage from './pages/StudentNotesPage';
 import StudentSpecialiteChoicePage from './pages/StudentSpecialiteChoicePage';
 import AdminGroupsPage from './pages/admin/Groups';
@@ -79,6 +78,36 @@ function AdminDisciplinaryView() {
   return <DisciplinaryCasesPage role="admin" />;
 }
 
+function LoginOverlayRedirect() {
+  const location = useLocation();
+  return <Navigate to="/home?login=1" replace state={location.state} />;
+}
+
+function ForgotPasswordOverlayRedirect() {
+  const location = useLocation();
+  return <Navigate to="/home?forgot=1" replace state={location.state} />;
+}
+
+/* Routes where the floating AI chat must stay hidden (auth flow + unauthenticated guests). */
+const AI_CHAT_HIDDEN_PATHS = new Set([
+  '/login',
+  '/register',
+  '/forgot-password',
+  '/change-password',
+  '/reset-password',
+]);
+
+function GatedAIChatbot() {
+  const { isAuthenticated, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) return null;
+  if (!isAuthenticated) return null;
+  if (AI_CHAT_HIDDEN_PATHS.has(location.pathname)) return null;
+
+  return <AIChatbot />;
+}
+
 function PresidentDisciplinaryView() {
   return <DisciplinaryCasesPage role="president" />;
 }
@@ -114,9 +143,9 @@ function App() {
               <Route path="/requests" element={<PublicLayout contained><RequestsPage role="guest" /></PublicLayout>} />
 
               {/* ── Auth routes (standalone — no sidebar, no navbar) ── */}
-              <Route path="/login" element={<LoginPage />} />
+              <Route path="/login" element={<LoginOverlayRedirect />} />
               <Route path="/register" element={<RegisterPage />} />
-              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordOverlayRedirect />} />
               <Route path="/change-password" element={<ChangePasswordPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
 
@@ -170,6 +199,14 @@ function App() {
                 element={
                   <ProtectedRoute allowedRoles={['enseignant', 'teacher', 'admin']}>
                     <DashboardLayout><DocumentsPage /></DashboardLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/dashboard/remise-copies"
+                element={
+                  <ProtectedRoute allowedRoles={['enseignant', 'teacher', 'admin']}>
+                    <DashboardLayout><RemiseCopie /></DashboardLayout>
                   </ProtectedRoute>
                 }
               />
@@ -324,7 +361,7 @@ function App() {
               <Route path="/unauthorized" element={<UnauthorizedPage />} />
               <Route path="*" element={<NotFoundPage />} />
               </Routes>
-              <AIChatbot />
+              <GatedAIChatbot />
             </div>
           </AuthProvider>
         </BrowserRouter>

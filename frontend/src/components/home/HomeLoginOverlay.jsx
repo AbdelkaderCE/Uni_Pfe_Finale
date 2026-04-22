@@ -1,29 +1,26 @@
-/*
-  Intent: A university staff member or student arriving to manage pedagogical activities.
-          They need to authenticate quickly and feel they're entering a professional, institutional tool.
-          They're probably in a rush — 7am before class, or between lectures.
-  Palette: Brand blue (#1d4ed8) anchors trust. Canvas (#f8f9fb) feels like paper.
-  Depth: shadow-card on the auth card — gentle lift, not dramatic.
-  Surfaces: canvas → surface card. Inputs inset with control-bg.
-  Typography: Inter — clean, neutral, institutional. Weight hierarchy: 700 heading, 500 labels, 400 body.
-  Spacing: 4px base. Card padding 32px. Form fields 16px gap.
-*/
-
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import React, { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../../contexts/AuthContext';
 
-export default function LoginPage() {
-  const { login, isAuthenticated, loading: authLoading, requiresPasswordChange, user } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
+/**
+ * HomeLoginOverlay — Login card layered on top of the Home page.
+ * Background is blurred via backdrop-filter on the overlay; the card itself
+ * stays crisp. Open it with the floating "Sign in" button or via the Hero CTA.
+ *
+ * Reuses AuthContext.login (no API duplication) and shares the same redirect
+ * logic the standalone /login page uses.
+ */
+export default function HomeLoginOverlay({ open, onClose }) {
   const { t } = useTranslation();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { login, isAuthenticated, requiresPasswordChange, user } = useAuth();
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
-  const [remember, setRemember] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -37,6 +34,7 @@ export default function LoginPage() {
   const isStudentUser = String(user?.coreRole || '').toLowerCase() === 'etudiant'
     || normalizedRoles.includes('etudiant')
     || normalizedRoles.includes('student');
+
   const defaultPostLoginPath = isAdminUser ? '/admin' : '/dashboard';
   const requestedPath = location.state?.from?.pathname;
   const isAllowedRequestedPath = (() => {
@@ -73,60 +71,90 @@ export default function LoginPage() {
     return true;
   })();
 
-  const from = isAllowedRequestedPath ? requestedPath : defaultPostLoginPath;
+  const postLoginPath = isAllowedRequestedPath ? requestedPath : defaultPostLoginPath;
 
-  /* If already authenticated, redirect respecting first-use flow */
+  /* Close on Escape */
   useEffect(() => {
-    if (!authLoading && isAuthenticated) {
-      navigate(requiresPasswordChange ? '/change-password' : from, { replace: true });
-    }
-  }, [authLoading, isAuthenticated, requiresPasswordChange, navigate, from]);
+    if (!open) return undefined;
+    const handler = (e) => { if (e.key === 'Escape') onClose?.(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [open, onClose]);
+
+  /* Lock body scroll while open */
+  useEffect(() => {
+    if (!open) return undefined;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
+  }, [open]);
+
+  /* Already-authenticated users get redirected straight to their dashboard */
+  useEffect(() => {
+    if (!open || !isAuthenticated) return;
+    if (requiresPasswordChange) { navigate('/change-password', { replace: true }); return; }
+    navigate(postLoginPath, { replace: true });
+  }, [open, isAuthenticated, requiresPasswordChange, navigate, postLoginPath]);
+
+  if (!open) return null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-
-    if (!identifier.trim()) {
-      setError(t('login.errorEmail'));
-      return;
-    }
-    if (!password) {
-      setError(t('login.errorPassword'));
-      return;
-    }
+    if (!identifier.trim()) { setError(t('login.errorEmail')); return; }
+    if (!password)          { setError(t('login.errorPassword')); return; }
 
     setLoading(true);
     try {
       await login(identifier.trim(), password);
-      /* AuthContext sets user + requiresPasswordChange, then useEffect redirects */
+      /* useEffect above handles the post-login redirect once user state hydrates */
     } catch (err) {
-      setError(err.message || t('login.errorInvalid'));
+      setError(err?.message || t('login.errorInvalid'));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-canvas px-4 py-12">
-      <div className="w-full max-w-[420px] bg-surface rounded-lg shadow-card border border-edge">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="home-login-title"
+      onClick={onClose}
+      className="fixed inset-0 z-[60] flex items-start sm:items-center justify-center overflow-y-auto px-4 py-6 sm:py-8 bg-black/45 backdrop-blur-md animate-[fadeIn_.18s_ease-out]"
+      style={{ backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)' }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative my-auto w-full max-w-[420px] max-h-[calc(100vh-2rem)] overflow-y-auto bg-surface/95 rounded-2xl shadow-2xl border border-edge"
+      >
+        {/* Close button */}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute top-3 right-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full text-ink-tertiary hover:bg-surface-200 hover:text-ink transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
 
-        {/* ── Header band ─────────────────────────────────────── */}
+        {/* Header */}
         <div className="px-8 pt-8 pb-6 text-center border-b border-edge-subtle">
           <img
             src="/Logo.png"
             alt="Ibn Khaldoun University"
             className="mx-auto mb-4 w-14 h-14 rounded-lg object-cover"
           />
-          <h1 className="text-xl font-bold text-ink tracking-tight">{t('login.welcome')}</h1>
-          <p className="mt-1 text-sm text-black">
-            {t('login.subtitle')}
-          </p>
+          <h1 id="home-login-title" className="text-xl font-bold text-ink tracking-tight">
+            {t('login.welcome')}
+          </h1>
+          <p className="mt-1 text-sm text-black">{t('login.subtitle')}</p>
         </div>
 
-        {/* ── Form ─────────────────────────────────────────────── */}
+        {/* Form */}
         <form onSubmit={handleSubmit} className="px-8 pt-6 pb-8">
-
-          {/* Error banner */}
           {error && (
             <div className="mb-5 px-3 py-2.5 rounded-md bg-danger/5 border border-edge-strong text-sm text-danger flex items-start gap-2">
               <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -136,45 +164,37 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Identifier */}
           <div className="mb-4">
-            <label htmlFor="identifier" className="block mb-1.5 text-sm font-medium text-black">
+            <label htmlFor="overlay-identifier" className="block mb-1.5 text-sm font-medium text-black">
               {t('login.emailOrId')}
             </label>
             <input
-              id="identifier"
+              id="overlay-identifier"
               type="text"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               placeholder="name@univ-ibn-khaldoun.dz"
               autoFocus
-              className="w-full px-3 py-2.5 text-sm text-ink bg-control-bg border border-control-border rounded-md
-                         placeholder:text-ink-muted
-                         focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand
-                         transition-colors duration-150"
+              className="w-full px-3 py-2.5 text-sm text-ink bg-control-bg border border-control-border rounded-md placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors duration-150"
             />
           </div>
 
-          {/* Password */}
           <div className="mb-4">
-            <label htmlFor="password" className="block mb-1.5 text-sm font-medium text-black">
+            <label htmlFor="overlay-password" className="block mb-1.5 text-sm font-medium text-black">
               {t('login.password')}
             </label>
             <div className="relative">
               <input
-                id="password"
+                id="overlay-password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-3 py-2.5 pr-10 text-sm text-ink bg-control-bg border border-control-border rounded-md
-                           placeholder:text-ink-muted
-                           focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand
-                           transition-colors duration-150"
+                className="w-full px-3 py-2.5 pr-10 text-sm text-ink bg-control-bg border border-control-border rounded-md placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors duration-150"
               />
               <button
                 type="button"
-                onClick={() => setShowPassword(!showPassword)}
+                onClick={() => setShowPassword((v) => !v)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-tertiary hover:text-ink-secondary transition-colors duration-150"
                 tabIndex={-1}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
@@ -193,49 +213,28 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Remember / Forgot */}
           <div className="flex items-center justify-between mb-6">
-            <label className="flex items-center gap-2 text-sm text-black cursor-pointer select-none group">
-              <span
-                role="checkbox"
-                aria-checked={remember}
-                tabIndex={0}
-                onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); setRemember(!remember); } }}
-                onClick={() => setRemember(!remember)}
-                className={`
-                  w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors duration-150
-                  ${remember
-                    ? 'bg-brand border-brand'
-                    : 'bg-control-bg border-control-border group-hover:border-ink-tertiary'
-                  }
-                `}
-              >
-                {remember && (
-                  <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                  </svg>
-                )}
-              </span>
+            <label className="flex items-center gap-2 text-sm text-black cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={() => setRemember((v) => !v)}
+                className="w-4 h-4 rounded border-control-border accent-brand"
+              />
               {t('login.rememberMe')}
             </label>
             <Link
-              to="/forgot-password"
+              to="/home?forgot=1"
               className="text-sm font-medium text-brand hover:text-brand-hover transition-colors duration-150"
             >
               {t('login.forgotPassword')}
             </Link>
           </div>
 
-          {/* Submit */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 px-4 rounded-md text-sm font-medium text-white
-                       bg-brand hover:bg-brand-hover active:bg-brand-dark
-                       focus:outline-none focus:ring-2 focus:ring-brand/30 focus:ring-offset-2
-                       disabled:opacity-50 disabled:cursor-not-allowed
-                       transition-all duration-150
-                       flex items-center justify-center gap-2"
+            className="w-full py-2.5 px-4 rounded-md text-sm font-medium text-white bg-brand hover:bg-brand-hover active:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand/30 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 flex items-center justify-center gap-2"
           >
             {loading && (
               <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
@@ -246,21 +245,7 @@ export default function LoginPage() {
             {loading ? t('login.signingIn') : t('common.signIn')}
           </button>
         </form>
-
-        {/* ── Back to home ─────────────────────────────────── */}
-        <div className="px-8 pb-6 text-center">
-          <Link
-            to="/home"
-            className="inline-flex items-center gap-1.5 text-sm text-ink-tertiary hover:text-brand transition-colors duration-150"
-          >
-            <svg className="w-3.5 h-3.5 rtl:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-            </svg>
-            {t('common.goHome')}
-          </Link>
-        </div>
       </div>
     </div>
   );
 }
-
