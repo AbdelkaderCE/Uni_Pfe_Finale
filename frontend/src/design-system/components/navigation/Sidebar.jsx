@@ -45,6 +45,12 @@ const icons = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
     </svg>
   ),
+  '/dashboard/remise-copies': (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12h6m-6 3h4.5M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 9.75h3.75m-3.75 3h7.5" />
+    </svg>
+  ),
   '/dashboard/disciplinary': (
     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0-10.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.75c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.249-8.25-3.286zM12 15.75h.008v.008H12v-.008z" />
@@ -95,7 +101,32 @@ const icons = {
       <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a3 3 0 110-6 3 3 0 010 6z" />
     </svg>
   ),
+  '/dashboard/student/history': (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2.25" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ),
+  '/dashboard/teacher/history': (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2.25" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ),
+  '/dashboard/admin/history': (
+    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2.25" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ),
 };
+
+const fallbackIcon = (
+  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h12A2.25 2.25 0 0120.25 6v12A2.25 2.25 0 0118 20.25H6A2.25 2.25 0 013.75 18V6z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 8.25h7.5m-7.5 3.75h7.5m-7.5 3.75h5.25" />
+  </svg>
+);
 
 /* ── Section labels for grouping (i18n keys) ─────────────────── */
 const SECTIONS = {
@@ -106,12 +137,16 @@ const SECTIONS = {
   '/dashboard/documents':      null,
   '/dashboard/disciplinary':   null,
   '/dashboard/requests':       null,
+  '/dashboard/remise-copies':  null,
+  '/dashboard/student/history': 'sections.academic',
+  '/dashboard/teacher/history': 'sections.academic',
   '/dashboard/settings':       'sections.system',
   '/dashboard/support':        null,
   '/admin':                    'sections.system',
   '/dashboard/admin/academic/management': 'sections.system',
   '/dashboard/admin/academic/assignments': 'sections.system',
   '/dashboard/admin/site-settings': 'sections.system',
+  '/dashboard/admin/history': 'sections.system',
 };
 
 function formatBadgeValue(count) {
@@ -224,7 +259,7 @@ export default function Sidebar({ modules = [], open = false, onClose, onNavigat
                   >
                     <span className={`flex items-center gap-3 min-w-0 ${collapsed ? 'lg:justify-center lg:w-full' : ''}`}>
                       <span className="relative w-5 h-5 shrink-0">
-                        {icons[item.path]}
+                        {icons[item.path] || fallbackIcon}
                         {collapsed && showBadge && (
                           <span className="hidden lg:inline-flex absolute -top-1.5 -end-2 min-w-[16px] h-4 items-center justify-center rounded-full bg-danger px-1 text-[9px] font-bold leading-none text-white">
                             {badgeValue}

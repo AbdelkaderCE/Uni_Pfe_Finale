@@ -80,6 +80,8 @@ type AdminListUserRecord = {
   userRoles: UserRoleWithRoleName[];
 };
 
+export type AdminUserPdfExportScope = "all" | "teachers" | "students";
+
 // ── Helpers ─────────────────────────────────────────────────────
 
 /** Fetch the role names for a given userId from user_roles + roles tables */
@@ -984,6 +986,105 @@ export const listUsersForAdmin = async (): Promise<Array<{
       .map((userRole: UserRoleWithRoleName) => userRole.role.nom)
       .filter((name: string | null): name is string => !!name),
   }));
+};
+
+export const listUsersForAdminPdfExport = async (
+  scope: AdminUserPdfExportScope
+): Promise<Array<{ id: number; fullName: string; department: string }>> => {
+  const roleNameFilter =
+    scope === "teachers" ? "enseignant" : scope === "students" ? "etudiant" : null;
+
+  const users = await prisma.user.findMany({
+    where: roleNameFilter
+      ? {
+          userRoles: {
+            some: {
+              role: {
+                nom: roleNameFilter,
+              },
+            },
+          },
+        }
+      : undefined,
+    select: {
+      id: true,
+      nom: true,
+      prenom: true,
+      etudiant: {
+        select: {
+          promo: {
+            select: {
+              specialite: {
+                select: {
+                  filiere: {
+                    select: {
+                      departement: {
+                        select: {
+                          nom_en: true,
+                          nom_ar: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      enseignant: {
+        select: {
+          enseignements: {
+            orderBy: {
+              id: "desc",
+            },
+            take: 1,
+            select: {
+              promo: {
+                select: {
+                  specialite: {
+                    select: {
+                      filiere: {
+                        select: {
+                          departement: {
+                            select: {
+                              nom_en: true,
+                              nom_ar: true,
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    orderBy: [{ nom: "asc" }, { prenom: "asc" }],
+  });
+
+  return users.map((user) => {
+    const studentDepartment =
+      user.etudiant?.promo?.specialite?.filiere?.departement?.nom_en ||
+      user.etudiant?.promo?.specialite?.filiere?.departement?.nom_ar ||
+      null;
+
+    const teacherDepartment =
+      user.enseignant?.enseignements[0]?.promo?.specialite?.filiere?.departement?.nom_en ||
+      user.enseignant?.enseignements[0]?.promo?.specialite?.filiere?.departement?.nom_ar ||
+      null;
+
+    const fullName = `${user.prenom || ""} ${user.nom || ""}`.trim() || "Unnamed User";
+
+    return {
+      id: user.id,
+      fullName,
+      department: studentDepartment || teacherDepartment || "N/A",
+    };
+  });
 };
 
 export const updateUserRolesByAdmin = async (

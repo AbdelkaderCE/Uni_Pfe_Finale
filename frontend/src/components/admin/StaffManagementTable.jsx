@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Edit2, Trash2, AlertCircle, Loader } from 'lucide-react';
+import { Search, Edit2, Trash2, AlertCircle, Loader, Download } from 'lucide-react';
 import axios from 'axios';
 import { Alert, Button, Modal } from '../../design-system/components';
 
@@ -16,6 +16,7 @@ const StaffManagementTable = ({ refreshKey = 0 }) => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
+  const [exportLoading, setExportLoading] = useState('');
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api/v1';
 
@@ -179,6 +180,52 @@ const StaffManagementTable = ({ refreshKey = 0 }) => {
     return 'bg-surface-200 text-ink-secondary border border-edge';
   };
 
+  const getDownloadFileName = (contentDisposition, fallbackName) => {
+    if (!contentDisposition) return fallbackName;
+    const fileNameMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+    return fileNameMatch?.[1] || fallbackName;
+  };
+
+  const handleExportPdf = async (scope) => {
+    try {
+      setError('');
+      setSuccessMessage('');
+      setExportLoading(scope);
+
+      const token = sessionStorage.getItem('pfe_access_token') || '';
+
+      const response = await axios.get(`${API_BASE_URL}/auth/admin/users/export/pdf`, {
+        params: { scope },
+        responseType: 'blob',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const fallbackName = `official-users-${scope}.pdf`;
+      const contentDisposition = response.headers['content-disposition'];
+      const fileName = getDownloadFileName(contentDisposition, fallbackName);
+
+      const fileBlob = new Blob([response.data], { type: 'application/pdf' });
+      const downloadUrl = window.URL.createObjectURL(fileBlob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+      setSuccessMessage('PDF export generated successfully');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (err) {
+      setError(err.response?.data?.error?.message || err.response?.data?.message || 'Failed to export PDF');
+      console.error('Error exporting users PDF:', err);
+    } finally {
+      setExportLoading('');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -203,6 +250,42 @@ const StaffManagementTable = ({ refreshKey = 0 }) => {
           {error}
         </Alert>
       )}
+
+      <div className="rounded-lg border border-edge bg-surface shadow-card p-6 space-y-4">
+        <h3 className="text-base font-semibold text-ink">Official PDF Exports</h3>
+        <p className="text-sm text-ink-secondary">
+          Generate formal user reports with header, pagination, and department details.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <Button
+            variant="primary"
+            size="sm"
+            loading={exportLoading === 'all'}
+            onClick={() => handleExportPdf('all')}
+          >
+            <Download className="w-4 h-4" />
+            Export All Users
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={exportLoading === 'teachers'}
+            onClick={() => handleExportPdf('teachers')}
+          >
+            <Download className="w-4 h-4" />
+            Export Teachers
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={exportLoading === 'students'}
+            onClick={() => handleExportPdf('students')}
+          >
+            <Download className="w-4 h-4" />
+            Export Students
+          </Button>
+        </div>
+      </div>
 
       {/* Filters */}
       <div className="rounded-lg border border-edge bg-surface shadow-card p-6 space-y-4">

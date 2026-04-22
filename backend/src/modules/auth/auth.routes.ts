@@ -14,6 +14,7 @@ import {
   importUsersByAdminExcelHandler,
   adminResetPasswordHandler,
   listAdminUsersHandler,
+  exportAdminUsersPdfHandler,
   listRolesHandler,
   getAcademicManagementOptionsHandler,
   createSpecialiteManagementHandler,
@@ -113,6 +114,14 @@ router.get(
   requireRole(["admin"]),
   requireAnyPermission(["users:manage"]),
   listAdminUsersHandler
+);
+
+router.get(
+  "/admin/users/export/pdf",
+  requireAuth,
+  requireRole(["admin"]),
+  requireAnyPermission(["users:manage"]),
+  exportAdminUsersPdfHandler
 );
 
 router.get(

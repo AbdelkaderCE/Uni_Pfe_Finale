@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, User, GraduationCap, UserCog, ShieldCheck } from 'lucide-react';
+import { Search, User, GraduationCap, UserCog, ShieldCheck, Download } from 'lucide-react';
 import { authAPI, resolveMediaUrl } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../design-system/components';
@@ -122,6 +122,7 @@ export default function AdminUsersPage() {
   const [error, setError] = useState('');
   const [lastCreatedCredentials, setLastCreatedCredentials] = useState(null);
   const [credentialRegistry, setCredentialRegistry] = useState([]);
+  const [pdfExportingScope, setPdfExportingScope] = useState('');
   const [logoBase64, setLogoBase64] = useState('');
   const [formMeta, setFormMeta] = useState({
     universityName: 'Université Ibn Khaldoun - Tiaret',
@@ -635,6 +636,30 @@ export default function AdminUsersPage() {
     }
   };
 
+  const exportOfficialUsersPdf = async (scope) => {
+    setError('');
+    setMessage('');
+    setPdfExportingScope(scope);
+
+    try {
+      const { blob, fileName } = await authAPI.adminExportUsersPdf(scope);
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = fileName || `official-users-${scope}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(objectUrl);
+
+      setMessage('Official PDF export generated successfully.');
+    } catch (err) {
+      setError(err.message || 'Failed to generate official users PDF export.');
+    } finally {
+      setPdfExportingScope('');
+    }
+  };
+
   /* ── Master/detail derived data (matches AdminHistoryPage pattern) ── */
   const USER_TABS = {
     all:     { label: 'All',      icon: Users => null }, // icon set inline in render
@@ -725,8 +750,41 @@ export default function AdminUsersPage() {
         <div className="flex flex-col gap-2 border-b border-edge-subtle pb-5">
           <h2 className="text-xl font-semibold tracking-tight text-ink">Official PDF Lists</h2>
           <p className="text-sm text-ink-secondary">
-            Generate two separate PDF files: one for students and one for teachers. Export includes only Nom, Prénom, Email, and Téléphone.
+            Generate official user registries with formal header, page numbers, and alternating row colors.
           </p>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+          <Button
+            type="button"
+            onClick={() => exportOfficialUsersPdf('all')}
+            loading={pdfExportingScope === 'all'}
+            variant="primary"
+            size="md"
+          >
+            <Download className="h-4 w-4" />
+            Export All Users
+          </Button>
+          <Button
+            type="button"
+            onClick={() => exportOfficialUsersPdf('teachers')}
+            loading={pdfExportingScope === 'teachers'}
+            variant="secondary"
+            size="md"
+          >
+            <Download className="h-4 w-4" />
+            Export Teachers
+          </Button>
+          <Button
+            type="button"
+            onClick={() => exportOfficialUsersPdf('students')}
+            loading={pdfExportingScope === 'students'}
+            variant="secondary"
+            size="md"
+          >
+            <Download className="h-4 w-4" />
+            Export Students
+          </Button>
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-3">
@@ -763,10 +821,10 @@ export default function AdminUsersPage() {
           <Button
             type="button"
             onClick={exportOfficialCredentialLists}
-            variant="primary"
+            variant="secondary"
             size="md"
           >
-            Exporter 2 fichiers PDF séparés
+            Export legacy student/teacher credential PDFs
           </Button>
         </div>
       </section>

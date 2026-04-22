@@ -395,6 +395,9 @@ export const authAPI = {
       method: 'PUT',
       body: JSON.stringify({ status }),
     }),
+
+  adminExportUsersPdf: (scope = 'all') =>
+    downloadFile(`/api/v1/auth/admin/users/export/pdf${buildQueryString({ scope })}`),
 };
 
 export const adminPanelAPI = {

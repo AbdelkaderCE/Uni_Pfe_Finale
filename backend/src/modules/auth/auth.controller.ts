@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import XLSX from "xlsx";
+import PDFDocument from "pdfkit";
 import {
   registerUser,
   loginUser,
@@ -26,6 +27,8 @@ import {
   requestPasswordReset,
   resetPasswordWithToken,
   updateCurrentUserPhoto,
+  listUsersForAdminPdfExport,
+  type AdminUserPdfExportScope,
 } from "../../modules/auth/auth.service";
 import {
   ACCESS_TOKEN_COOKIE_NAME,
@@ -869,6 +872,180 @@ export const listAdminUsersHandler = async (req: AuthRequest, res: Response) => 
       success: false,
       error: {
         code: "LIST_USERS_FAILED",
+        message: error.message,
+      },
+    });
+  }
+};
+
+export const exportAdminUsersPdfHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: "UNAUTHORIZED",
+          message: "Not authenticated",
+        },
+      });
+    }
+
+    const scopeParam = String(req.query?.scope || "all").toLowerCase();
+    const scopeMap: Record<string, AdminUserPdfExportScope> = {
+      all: "all",
+      teachers: "teachers",
+      students: "students",
+    };
+
+    const scope = scopeMap[scopeParam];
+    if (!scope) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_SCOPE",
+          message: "Scope must be one of: all, teachers, students",
+        },
+      });
+    }
+
+    const users = await listUsersForAdminPdfExport(scope);
+    const generatedAt = new Date();
+
+    const fileName = `official-users-${scope}-${generatedAt.toISOString().slice(0, 10)}.pdf`;
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+
+    const pdf = new PDFDocument({
+      size: "A4",
+      margin: 50,
+      bufferPages: true,
+    });
+
+    pdf.pipe(res);
+
+    const margin = 50;
+    const rowHeight = 24;
+    const tableWidth = pdf.page.width - margin * 2;
+    const columns = [
+      { key: "fullName", label: "Full Name", width: tableWidth * 0.44 },
+      { key: "id", label: "ID", width: tableWidth * 0.18 },
+      { key: "department", label: "Department", width: tableWidth * 0.38 },
+    ];
+
+    const drawFormalHeader = () => {
+      pdf
+        .font("Helvetica-Bold")
+        .fontSize(16)
+        .fillColor("#111827")
+        .text("OFFICIAL USER REGISTRY", margin, 50, { align: "center", width: tableWidth });
+
+      pdf
+        .font("Helvetica")
+        .fontSize(10)
+        .fillColor("#374151")
+        .text("University User Management System", margin, 74, { align: "center", width: tableWidth });
+
+      const scopeLabel =
+        scope === "all" ? "All Users" : scope === "teachers" ? "Teachers" : "Students";
+
+      pdf
+        .font("Helvetica")
+        .fontSize(9)
+        .fillColor("#4B5563")
+        .text(`Category: ${scopeLabel}`, margin, 94, { align: "left", width: tableWidth })
+        .text(`Generated: ${generatedAt.toLocaleString()}`, margin, 94, { align: "right", width: tableWidth });
+
+      pdf
+        .moveTo(margin, 112)
+        .lineTo(pdf.page.width - margin, 112)
+        .lineWidth(1)
+        .strokeColor("#D1D5DB")
+        .stroke();
+
+      return 126;
+    };
+
+    const drawTableHeader = (startY: number) => {
+      pdf.rect(margin, startY, tableWidth, rowHeight).fill("#E5E7EB");
+
+      let x = margin;
+      columns.forEach((column) => {
+        pdf
+          .font("Helvetica-Bold")
+          .fontSize(10)
+          .fillColor("#111827")
+          .text(column.label, x + 8, startY + 7, {
+            width: column.width - 16,
+            ellipsis: true,
+          });
+
+        x += column.width;
+      });
+
+      return startY + rowHeight;
+    };
+
+    const drawTableRow = (
+      row: { id: number; fullName: string; department: string },
+      rowY: number,
+      rowIndex: number
+    ) => {
+      pdf
+        .rect(margin, rowY, tableWidth, rowHeight)
+        .fill(rowIndex % 2 === 0 ? "#FFFFFF" : "#F9FAFB");
+
+      let x = margin;
+      const values = [row.fullName, String(row.id), row.department];
+
+      values.forEach((value, valueIndex) => {
+        pdf
+          .font("Helvetica")
+          .fontSize(9)
+          .fillColor("#1F2937")
+          .text(value, x + 8, rowY + 7, {
+            width: columns[valueIndex].width - 16,
+            ellipsis: true,
+          });
+
+        x += columns[valueIndex].width;
+      });
+    };
+
+    let cursorY = drawFormalHeader();
+    cursorY = drawTableHeader(cursorY);
+
+    users.forEach((row, rowIndex) => {
+      const footerReserve = 44;
+      if (cursorY + rowHeight > pdf.page.height - margin - footerReserve) {
+        pdf.addPage();
+        cursorY = drawFormalHeader();
+        cursorY = drawTableHeader(cursorY);
+      }
+
+      drawTableRow(row, cursorY, rowIndex);
+      cursorY += rowHeight;
+    });
+
+    const pageRange = pdf.bufferedPageRange();
+    for (let pageIndex = 0; pageIndex < pageRange.count; pageIndex += 1) {
+      pdf.switchToPage(pageIndex);
+      pdf
+        .font("Helvetica")
+        .fontSize(9)
+        .fillColor("#6B7280")
+        .text(`Page ${pageIndex + 1} of ${pageRange.count}`, 0, pdf.page.height - 30, {
+          align: "center",
+          width: pdf.page.width,
+        });
+    }
+
+    pdf.end();
+    return;
+  } catch (error: any) {
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: "EXPORT_USERS_PDF_FAILED",
         message: error.message,
       },
     });
