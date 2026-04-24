@@ -1,5 +1,5 @@
 const express = require('express');
-const { VoeuController } = require('../controllers/voeu.controller');
+const { VoeuController } = require('./voeu.controller');
 
 const router = express.Router();
 const voeuController = new VoeuController();

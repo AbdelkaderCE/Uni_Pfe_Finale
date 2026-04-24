@@ -17,6 +17,7 @@ import {
   RequestWorkflowStage,
 } from "../requests/workflow.service";
 import { ensureLocalUploadDirectory } from "../../shared/local-upload.service";
+import { TERMINAL_STATUSES } from "../../shared/status-lock";
 
 type RequestAttachmentPayload = {
   id: number | string;
@@ -947,8 +948,11 @@ export const decideReclamation = async (req: AuthRequest, res: Response): Promis
     const responseValue = buildDecisionComment(action, responseText);
     const workflowTransition = getWorkflowTransitionForDecision(action);
 
-    const updated = await prisma.reclamation.update({
-      where: { id: reclamationId },
+    const lockResult = await prisma.reclamation.updateMany({
+      where: {
+        id: reclamationId,
+        status: { notIn: [...TERMINAL_STATUSES.reclamation] },
+      },
       data: {
         status,
         traitePar: req.user?.id,
@@ -956,10 +960,42 @@ export const decideReclamation = async (req: AuthRequest, res: Response): Promis
         reponse_ar: responseValue,
         reponse_en: responseValue,
       },
-      include: {
-        etudiant: { select: { id: true } },
-      },
     });
+
+    if (lockResult.count === 0) {
+      const existing = await prisma.reclamation.findUnique({
+        where: { id: reclamationId },
+        select: { status: true },
+      });
+      if (!existing) {
+        res.status(404).json({
+          success: false,
+          error: { code: "NOT_FOUND", message: "Reclamation not found" },
+        });
+        return;
+      }
+      res.status(409).json({
+        success: false,
+        error: {
+          code: "ALREADY_PROCESSED",
+          message: `Reclamation has already been decided (current status: ${existing.status}). Decision is final.`,
+        },
+      });
+      return;
+    }
+
+    const updated = await prisma.reclamation.findUnique({
+      where: { id: reclamationId },
+      include: { etudiant: { select: { id: true } } },
+    });
+
+    if (!updated) {
+      res.status(404).json({
+        success: false,
+        error: { code: "NOT_FOUND", message: "Reclamation not found" },
+      });
+      return;
+    }
 
     await appendRequestWorkflowEvent({
       requestCategory: "reclamation",
@@ -1211,8 +1247,11 @@ export const decideJustification = async (req: AuthRequest, res: Response): Prom
     const adminComment = buildDecisionComment(action, responseText);
     const workflowTransition = getWorkflowTransitionForDecision(action);
 
-    const updated = await prisma.justification.update({
-      where: { id: justificationId },
+    const lockResult = await prisma.justification.updateMany({
+      where: {
+        id: justificationId,
+        status: { notIn: [...TERMINAL_STATUSES.justification] },
+      },
       data: {
         status,
         traitePar: req.user?.id,
@@ -1220,10 +1259,42 @@ export const decideJustification = async (req: AuthRequest, res: Response): Prom
         commentaireAdmin_ar: adminComment,
         commentaireAdmin_en: adminComment,
       },
-      include: {
-        etudiant: { select: { id: true } },
-      },
     });
+
+    if (lockResult.count === 0) {
+      const existing = await prisma.justification.findUnique({
+        where: { id: justificationId },
+        select: { status: true },
+      });
+      if (!existing) {
+        res.status(404).json({
+          success: false,
+          error: { code: "NOT_FOUND", message: "Justification not found" },
+        });
+        return;
+      }
+      res.status(409).json({
+        success: false,
+        error: {
+          code: "ALREADY_PROCESSED",
+          message: `Justification has already been decided (current status: ${existing.status}). Decision is final.`,
+        },
+      });
+      return;
+    }
+
+    const updated = await prisma.justification.findUnique({
+      where: { id: justificationId },
+      include: { etudiant: { select: { id: true } } },
+    });
+
+    if (!updated) {
+      res.status(404).json({
+        success: false,
+        error: { code: "NOT_FOUND", message: "Justification not found" },
+      });
+      return;
+    }
 
     await appendRequestWorkflowEvent({
       requestCategory: "justification",
@@ -1364,10 +1435,11 @@ export const getReclamationTypes = async (_req: AuthRequest, res: Response): Pro
   try {
     await ensureDefaultReclamationTypes();
     const types = await prisma.reclamationType.findMany({
-      select: { id: true, nom_ar: true, nom_en: true, description_ar: true, description_en: true },
+      select: { id: true, code: true, nom_ar: true, nom_en: true, description_ar: true, description_en: true },
       orderBy: { id: "asc" },
     });
-    res.status(200).json({ success: true, data: types });
+    const data = types.map((t) => ({ ...t, nom: t.nom_en || t.nom_ar || "" }));
+    res.status(200).json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
   }
@@ -1378,10 +1450,11 @@ export const getJustificationTypes = async (_req: AuthRequest, res: Response): P
   try {
     await ensureDefaultJustificationTypes();
     const types = await prisma.typeAbsence.findMany({
-      select: { id: true, nom_ar: true, nom_en: true, description_ar: true, description_en: true },
+      select: { id: true, code: true, nom_ar: true, nom_en: true, description_ar: true, description_en: true },
       orderBy: { id: "asc" },
     });
-    res.status(200).json({ success: true, data: types });
+    const data = types.map((t) => ({ ...t, nom: t.nom_en || t.nom_ar || "" }));
+    res.status(200).json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
   }

@@ -5,6 +5,7 @@ import { connectDatabase } from "./config/database";
 import { ensureRbacCatalog } from "./shared/rbac.service";
 import { ensureRequestWorkflowHistoryTable } from "./modules/requests/workflow.service";
 import { ensureAuditLogTable } from "./shared/audit-log.service";
+import { ensurePfeRuntimeCompatibility } from "./modules/pfe/pfe-runtime-compat.service";
 
 const PORT = process.env.PORT || 5000;
 
@@ -19,17 +20,34 @@ async function startServer() {
       ensureRbacCatalog(),
       ensureRequestWorkflowHistoryTable(),
       ensureAuditLogTable(),
+      ensurePfeRuntimeCompatibility(),
     ]);
 
     const httpServer = createServer(app);
 
-    // ثم تشغيل السيرفر
-    httpServer.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
-      console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
+    // Wrap listen() in a Promise so EADDRINUSE surfaces in the try/catch above.
+    // Node fires listen errors as an 'error' event, not a thrown exception.
+    await new Promise<void>((resolve, reject) => {
+      httpServer.once("error", (err: NodeJS.ErrnoException) => {
+        if (err.code === "EADDRINUSE") {
+          reject(
+            new Error(
+              `Port ${PORT} is already in use. ` +
+              `Stop the existing process or set a different PORT in your .env file.`
+            )
+          );
+        } else {
+          reject(err);
+        }
+      });
+      httpServer.listen(PORT, () => {
+        console.log(`🚀 Server running on http://localhost:${PORT}`);
+        console.log(`📝 Environment: ${process.env.NODE_ENV || "development"}`);
+        resolve();
+      });
     });
   } catch (error) {
-    console.error("❌ Failed to start server:", error);
+    console.error("❌ Failed to start server:", error instanceof Error ? error.message : error);
     process.exit(1);
   }
 }

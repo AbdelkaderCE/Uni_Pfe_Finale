@@ -10,6 +10,7 @@
 */
 
 import React from 'react';
+import RequestConversation from '../components/requests/RequestConversation';
 
 /* ── Helpers ────────────────────────────────────────────────── */
 
@@ -144,14 +145,28 @@ export default function RequestDetailPage({ request, onBack }) {
         {/* Left — 2/3 */}
         <div className="lg:col-span-2 space-y-6">
 
-          {/* ── Request Body ──────────────────────────────────── */}
+          {/* ── Conversation (chat/ticket view) ─────────────────── */}
+          <RequestConversation
+            variant="student"
+            request={{
+              status: request.status,
+              description: request.description,
+              studentName: request.studentName || 'You',
+              studentId: request.studentId,
+              dateSubmitted: request.dateSubmitted,
+              adminResponse: request.adminResponse?.message || null,
+              adminName: request.adminResponse?.respondedBy || 'Administration',
+              decisionDate: request.adminResponse?.date || request.lastUpdated || null,
+            }}
+          />
+
+          {/* ── Meta ─────────────────────────────────────────────── */}
           <Section
             title="Request Details"
             icon={<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>}
           >
             <div className="p-6">
-              <p className="text-sm text-ink-secondary leading-relaxed whitespace-pre-line">{request.description}</p>
-              <div className="mt-4 grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-xs text-ink-muted">Type</p>
                   <p className="text-sm font-medium text-ink mt-0.5">{request.type}</p>
@@ -163,56 +178,6 @@ export default function RequestDetailPage({ request, onBack }) {
               </div>
             </div>
           </Section>
-
-          {/* ── Official Response ──────────────────────────────── */}
-          {request.adminResponse ? (
-            <div className={`rounded-lg border shadow-card overflow-hidden ${
-              request.adminResponse.decision === 'Approved'
-                ? 'bg-success/5 border border-edge-strong'
-                : 'bg-danger/5 border border-edge-strong'
-            }`}>
-              <div className={`px-6 py-4 border-b flex items-center gap-2 ${
-                request.adminResponse.decision === 'Approved'
-                  ? 'border-edge-strong'
-                  : 'border-edge-strong'
-              }`}>
-                {request.adminResponse.decision === 'Approved' ? (
-                  <svg className="w-5 h-5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5 text-danger" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                  </svg>
-                )}
-                <h2 className={`text-base font-semibold ${
-                  request.adminResponse.decision === 'Approved' ? 'text-success' : 'text-danger'
-                }`}>
-                  Official Response — {request.adminResponse.decision}
-                </h2>
-              </div>
-              <div className="p-6">
-                <div className="bg-surface rounded-lg p-4 border border-edge-subtle">
-                  <p className="text-sm text-ink leading-relaxed">{request.adminResponse.message}</p>
-                </div>
-                <div className="mt-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-ink-muted">Responded by</p>
-                    <p className="text-sm font-medium text-ink mt-0.5">{request.adminResponse.respondedBy}</p>
-                  </div>
-                  <p className="text-xs text-ink-muted">{formatDate(request.adminResponse.date)}</p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-surface rounded-lg border border-edge shadow-card p-6 text-center">
-              <svg className="w-8 h-8 text-ink-muted mx-auto mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <p className="text-sm font-medium text-ink-secondary">Awaiting Response</p>
-              <p className="text-xs text-ink-muted mt-1">Your request is being reviewed. You will be notified when a decision is made.</p>
-            </div>
-          )}
         </div>
 
         {/* Right — 1/3 sidebar */}

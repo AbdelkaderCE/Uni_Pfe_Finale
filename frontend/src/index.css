@@ -414,6 +414,12 @@ label[class*="text-xs"][class*="rounded"][class*="border"] {
   100% { transform: translateX(100%); }
 }
 
+@keyframes statusPulse {
+  0%   { transform: scale(0.9); opacity: 0; }
+  60%  { transform: scale(1.05); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
 /* Image shimmer loading effect */
 .image-loading {
   position: relative;

@@ -2,11 +2,47 @@ const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
+const PFE_SUJET_PENDING_STATUS = 'propose';
+
+const getCurrentAcademicYear = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const startYear = month >= 9 ? year : year - 1;
+  return `${startYear}/${startYear + 1}`;
+};
+
+async function decideSujetLocked(sujetId, data) {
+  const result = await prisma.pfeSujet.updateMany({
+    where: { id: sujetId, status: PFE_SUJET_PENDING_STATUS },
+    data,
+  });
+
+  if (result.count === 0) {
+    const existing = await prisma.pfeSujet.findUnique({
+      where: { id: sujetId },
+      select: { status: true },
+    });
+    if (!existing) {
+      return { notFound: true };
+    }
+    return { locked: true, currentStatus: existing.status };
+  }
+
+  const sujet = await prisma.pfeSujet.findUnique({
+    where: { id: sujetId },
+    include: { enseignant: { include: { user: true } } },
+  });
+
+  return { sujet };
+}
+
 class AdminPfeController {
 
    async togglePropositionSujets(req, res) {
   try {
     const { valeur, adminId } = req.body;
+      const anneeUniversitaire = getCurrentAcademicYear();
     
     // Vérifier que l'admin existe
     const admin = await prisma.user.findUnique({
@@ -23,7 +59,7 @@ class AdminPfeController {
     // Utiliser $executeRaw pour éviter les problèmes de mapping
     await prisma.$executeRaw`
       INSERT INTO pfe_config (nom_config, valeur, description_ar, annee_universitaire, created_by, created_at, updated_at)
-      VALUES (${'proposition_sujets_ouverte'}, ${valeur}, ${'السماح باقتراح المواضيع من قبل الأساتذة'}, ${'2025/2026'}, ${parseInt(adminId)}, NOW(), NOW())
+      VALUES (${'proposition_sujets_ouverte'}, ${valeur}, ${'السماح باقتراح المواضيع من قبل الأساتذة'}, ${anneeUniversitaire}, ${parseInt(adminId)}, NOW(), NOW())
       ON CONFLICT (nom_config) DO UPDATE SET 
         valeur = ${valeur},
         updated_at = NOW()
@@ -69,50 +105,71 @@ async getPropositionStatus(req, res) {
   // 1. Valider un sujet proposé par un enseignant
  async validerSujet(req, res) {
   try {
-    const { id } = req.params;
+    const sujetId = parseInt(req.params.id);
     const { adminId, commentaire_ar, commentaire_en } = req.body;
-    
-    const sujet = await prisma.pfeSujet.update({
-      where: { id: parseInt(id) },
-      data: {
-        status: 'valide',
-        validePar: parseInt(adminId),
-        dateValidation: new Date(),
-        commentaireAdmin_ar: commentaire_ar,
-        commentaireAdmin_en: commentaire_en
-      },
-      include: {
-        enseignant: {
-          include: { user: true }
-        }
-      }
+
+    const decided = await decideSujetLocked(sujetId, {
+      status: 'valide',
+      validePar: parseInt(adminId),
+      dateValidation: new Date(),
+      commentaireAdmin_ar: commentaire_ar,
+      commentaireAdmin_en: commentaire_en,
     });
-    
-    res.json({ success: true, message: 'Sujet validé avec succès', data: sujet });
+
+    if (decided.notFound) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Sujet non trouvé' },
+      });
+    }
+    if (decided.locked) {
+      return res.status(409).json({
+        success: false,
+        error: {
+          code: 'ALREADY_PROCESSED',
+          message: `Ce sujet a déjà été traité (statut actuel: ${decided.currentStatus})`,
+        },
+      });
+    }
+
+    res.json({ success: true, message: 'Sujet validé avec succès', data: decided.sujet });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, error: error.message });
   }
 }
-  
+
   // 2. Refuser un sujet
   async refuserSujet(req, res) {
     try {
-      const { id } = req.params;
+      const sujetId = parseInt(req.params.id);
       const { adminId, commentaire_ar, commentaire_en } = req.body;
-      
-      const sujet = await prisma.pfeSujet.update({
-        where: { id: parseInt(id) },
-        data: {
-          status: 'termine',
-          validePar: parseInt(adminId),
-          dateValidation: new Date(),
-          commentaireAdmin_ar: commentaire_ar,
-          commentaireAdmin_en: commentaire_en
-        }
+
+      const decided = await decideSujetLocked(sujetId, {
+        status: 'termine',
+        validePar: parseInt(adminId),
+        dateValidation: new Date(),
+        commentaireAdmin_ar: commentaire_ar,
+        commentaireAdmin_en: commentaire_en,
       });
-      
-      res.json({ success: true, message: 'Sujet refusé', data: sujet });
+
+      if (decided.notFound) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Sujet non trouvé' },
+        });
+      }
+      if (decided.locked) {
+        return res.status(409).json({
+          success: false,
+          error: {
+            code: 'ALREADY_PROCESSED',
+            message: `Ce sujet a déjà été traité (statut actuel: ${decided.currentStatus})`,
+          },
+        });
+      }
+
+      res.json({ success: true, message: 'Sujet refusé', data: decided.sujet });
     } catch (error) {
       console.error(error);
       res.status(500).json({ success: false, error: error.message });
